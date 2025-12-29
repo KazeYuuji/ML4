@@ -1,0 +1,11 @@
+[project]
+requires-python = ">=3.9,<3.12"
+
+[tool.rye]
+managed = true
+dev-dependencies = []
+
+[tool.rye.scripts]
+lint = "ruff check ."
+fix = "ruff check --fix ."
+format = "ruff format ."
