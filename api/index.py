@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory
 import joblib
 import numpy as np
 import pandas as pd
@@ -6,7 +6,10 @@ from datetime import datetime
 import os
 import sys
 
-app = Flask(__name__, template_folder='../public', static_folder='../public')
+# Add the parent directory to the path to import the model
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+app = Flask(__name__)
 
 # Load the model and preprocessing objects
 try:
@@ -23,13 +26,14 @@ except Exception as e:
 # Get current year for age calculation
 current_year = datetime.now().year
 
+# Serve static files
 @app.route('/')
 def home():
-    return send_from_directory(app.static_folder, 'index.html')
+    return send_from_directory('../public', 'index.html')
 
 @app.route('/about')
 def about():
-    return send_from_directory(app.static_folder, 'about.html')
+    return send_from_directory('../public', 'about.html')
 
 @app.route('/api/feature-importance')
 def feature_importance_api():
@@ -125,8 +129,9 @@ def predict():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
-# For Vercel serverless functions
-app.handler = app
+# Vercel serverless function handler
+def handler(request):
+    return app(request.environ, lambda status, headers: None)
 
 if __name__ == '__main__':
     app.run(debug=True)
