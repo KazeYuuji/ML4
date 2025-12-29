@@ -1,17 +1,16 @@
+# api/index.py
 from flask import Flask, request, jsonify, send_from_directory
 import joblib
 import numpy as np
 import pandas as pd
 from datetime import datetime
 import os
-import sys
 
-# Add the parent directory to the path to import the model
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Inisialisasi Flask App
+app = Flask(__name__, static_folder='../public', static_url_path='')
 
-app = Flask(__name__)
-
-# Load the model and preprocessing objects
+# Load model dan objek preprocessing
+# Path relatif dari root repository saat deployment
 try:
     model = joblib.load('backend/model/camera_price_prediction_model.pkl')
     scaler = joblib.load('backend/model/camera_price_scaler.pkl')
@@ -19,14 +18,16 @@ try:
     selected_features = joblib.load('backend/model/selected_features.pkl')
     feature_importance = pd.read_csv('backend/model/feature_importance.csv')
     model_loaded = True
+    print("Model and preprocessing objects loaded successfully!")
 except Exception as e:
     print(f"Error loading model: {e}")
     model_loaded = False
 
-# Get current year for age calculation
+# Tahun saat ini untuk fitur usia kamera
 current_year = datetime.now().year
 
-# Serve static files
+# --- ROUTES ---
+
 @app.route('/')
 def home():
     return send_from_directory('../public', 'index.html')
@@ -41,7 +42,6 @@ def feature_importance_api():
         return jsonify({'success': False, 'error': 'Model not loaded'})
     
     try:
-        # Return top 10 features
         top_features = feature_importance.head(10).to_dict('records')
         return jsonify({
             'success': True,
@@ -56,7 +56,7 @@ def predict():
         return jsonify({'success': False, 'error': 'Model not loaded'})
     
     try:
-        # Get form data
+        # Ambil data dari form
         camera_specs = {
             'Model': request.form['model'],
             'Release date': int(request.form['release_date']),
@@ -72,7 +72,7 @@ def predict():
             'Dimensions': float(request.form['dimensions'])
         }
         
-        # Apply the same feature engineering as in the notebook
+        # Terapkan feature engineering yang sama seperti di notebook
         new_df = pd.DataFrame([camera_specs])
         new_df['Brand'] = new_df['Model'].apply(lambda x: x.split()[0])
         new_df['Model_Name'] = new_df['Model'].apply(lambda x: ' '.join(x.split()[1:]))
@@ -91,28 +91,27 @@ def predict():
         try:
             new_df['Brand_Encoded'] = le.transform(new_df['Brand'])
         except ValueError:
-            # Handle unknown brands
             new_df['Brand_Encoded'] = 0
         
-        # Create brand dummies
+        # Buat brand dummies
         brand_dummies_new = pd.get_dummies(new_df['Brand'], prefix='Brand', drop_first=True)
         new_df = pd.concat([new_df, brand_dummies_new], axis=1)
         
-        # Ensure all required columns are present
+        # Pastikan semua kolom yang diperlukan ada
         for col in selected_features:
             if col not in new_df.columns:
                 new_df[col] = 0
         
-        # Select only the features used in the model
+        # Pilih hanya fitur yang digunakan dalam model
         new_df_selected = new_df[selected_features]
         
-        # Scale the features
+        # Skalakan fitur
         new_df_scaled = scaler.transform(new_df_selected)
         
-        # Make prediction
+        # Buat prediksi
         prediction = model.predict(new_df_scaled)[0]
         
-        # Get prediction interval
+        # Dapatkan interval prediksi
         tree_predictions = np.array([tree.predict(new_df_scaled)[0] for tree in model.estimators_])
         std_dev = np.std(tree_predictions)
         confidence_interval = (prediction - 1.96*std_dev, prediction + 1.96*std_dev)
@@ -129,9 +128,5 @@ def predict():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
-# Vercel serverless function handler
-def handler(request):
-    return app(request.environ, lambda status, headers: None)
-
-if __name__ == '__main__':
-    app.run(debug=True)
+# Vercel akan secara otomatis membungkus instance 'app' Flask ini
+# JANGAN menambahkan fungsi handler() atau blok if __name__ == '__main__'
