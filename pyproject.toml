@@ -1,11 +1,12 @@
 [project]
+name = "camera-price-predictor"
 requires-python = ">=3.9,<3.12"
-
-[tool.rye]
-managed = true
-dev-dependencies = []
-
-[tool.rye.scripts]
-lint = "ruff check ."
-fix = "ruff check --fix ."
-format = "ruff format ."
+version = "0.1.0"
+description = "A camera price prediction model"
+dependencies = [
+    "flask==2.2.2",
+    "pandas==2.0.3",
+    "numpy==1.25.2",
+    "scikit-learn==1.3.0",
+    "joblib==1.2.0"
+]
