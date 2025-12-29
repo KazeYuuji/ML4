@@ -5,20 +5,60 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import os
+import requests
+import tempfile
+import zipfile
+import io
 
-# Inisialisasi Flask App
 app = Flask(__name__, static_folder='../public', static_url_path='')
 
+# Fungsi untuk mengunduh dan mengekstrak model dari GitHub
+def download_and_extract_models():
+    try:
+        # URL raw dari file ZIP yang berisi model
+        # Ganti dengan URL repository Anda
+        repo_owner = "KazeYuuji"
+        repo_name = "ML4"
+        branch = "main"
+        models_zip_url = f"https://github.com/{repo_owner}/{repo_name}/archive/{branch}.zip"
+        
+        # Download ZIP
+        response = requests.get(models_zip_url)
+        response.raise_for_status()
+        
+        # Ekstrak ZIP
+        with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
+            # Ekstrak hanya folder models
+            for file in zip_ref.namelist():
+                if file.startswith(f"{repo_name}-{branch}/models/"):
+                    # Ekstrak ke direktori sementara
+                    zip_ref.extract(file, '/tmp/')
+                    # Pindahkan ke lokasi yang diinginkan
+                    src = f"/tmp/{file}"
+                    dst = file.replace(f"{repo_name}-{branch}/", "")
+                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    os.rename(src, dst)
+        
+        return True
+    except Exception as e:
+        print(f"Error downloading models: {e}")
+        return False
+
+# Download models saat startup
+models_downloaded = download_and_extract_models()
+
 # Load model dan objek preprocessing
-# Path relatif dari root repository saat deployment
 try:
-    model = joblib.load('backend/model/camera_price_prediction_model.pkl')
-    scaler = joblib.load('backend/model/camera_price_scaler.pkl')
-    le = joblib.load('backend/model/camera_brand_encoder.pkl')
-    selected_features = joblib.load('backend/model/selected_features.pkl')
-    feature_importance = pd.read_csv('backend/model/feature_importance.csv')
-    model_loaded = True
-    print("Model and preprocessing objects loaded successfully!")
+    if models_downloaded:
+        model = joblib.load('models/camera_price_prediction_model.pkl')
+        scaler = joblib.load('models/camera_price_scaler.pkl')
+        le = joblib.load('models/camera_brand_encoder.pkl')
+        selected_features = joblib.load('models/selected_features.pkl')
+        feature_importance = pd.read_csv('models/feature_importance.csv')
+        model_loaded = True
+        print("Models loaded successfully!")
+    else:
+        model_loaded = False
 except Exception as e:
     print(f"Error loading model: {e}")
     model_loaded = False
@@ -127,6 +167,3 @@ def predict():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
-# Vercel akan secara otomatis membungkus instance 'app' Flask ini
-# JANGAN menambahkan fungsi handler() atau blok if __name__ == '__main__'
