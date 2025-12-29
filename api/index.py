@@ -1,4 +1,3 @@
-# api/index.py
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import joblib
 import numpy as np
@@ -6,9 +5,6 @@ import pandas as pd
 from datetime import datetime
 import os
 import sys
-
-# Add the parent directory to the path to import the model
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 app = Flask(__name__, template_folder='../public', static_folder='../public')
 
@@ -27,6 +23,14 @@ except Exception as e:
 # Get current year for age calculation
 current_year = datetime.now().year
 
+@app.route('/')
+def home():
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/about')
+def about():
+    return send_from_directory(app.static_folder, 'about.html')
+
 @app.route('/api/feature-importance')
 def feature_importance_api():
     if not model_loaded:
@@ -41,14 +45,6 @@ def feature_importance_api():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/')
-def home():
-    return send_from_directory(app.static_folder, 'index.html')
-
-@app.route('/about')
-def about():
-    return send_from_directory(app.static_folder, 'about.html')
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -83,7 +79,7 @@ def predict():
         new_df['Resolution_Ratio'] = new_df['Resolution_Ratio'].replace([np.inf, -np.inf], np.nan).fillna(1)
         new_df['Megapixels'] = new_df['Effective pixels'] / 1000000
         new_df['Weight_per_MP'] = new_df['Weight (inc. batteries)'] / new_df['Megapixels']
-        new_df['Weight_per_MP'] = new_df['Weight_per_MP'].replace([np.inf, -np.inf], np.nan).fillna(185)  # Default median weight
+        new_df['Weight_per_MP'] = new_df['Weight_per_MP'].replace([np.inf, -np.inf], np.nan).fillna(185)
         new_df['Size_Efficiency'] = new_df['Max resolution'] / new_df['Dimensions']
         new_df['Size_Efficiency'] = new_df['Size_Efficiency'].replace([np.inf, -np.inf], np.nan).fillna(0)
         
@@ -92,7 +88,7 @@ def predict():
             new_df['Brand_Encoded'] = le.transform(new_df['Brand'])
         except ValueError:
             # Handle unknown brands
-            new_df['Brand_Encoded'] = 0  # Default encoding for unknown brands
+            new_df['Brand_Encoded'] = 0
         
         # Create brand dummies
         brand_dummies_new = pd.get_dummies(new_df['Brand'], prefix='Brand', drop_first=True)
@@ -112,7 +108,7 @@ def predict():
         # Make prediction
         prediction = model.predict(new_df_scaled)[0]
         
-        # Get prediction interval (using standard deviation of predictions from all trees)
+        # Get prediction interval
         tree_predictions = np.array([tree.predict(new_df_scaled)[0] for tree in model.estimators_])
         std_dev = np.std(tree_predictions)
         confidence_interval = (prediction - 1.96*std_dev, prediction + 1.96*std_dev)
