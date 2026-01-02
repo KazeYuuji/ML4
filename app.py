@@ -1,11 +1,11 @@
 # app.py
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import joblib
 import numpy as np
 import pandas as pd
 from datetime import datetime
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='public', static_folder='public')
 
 # Load the model and preprocessing objects
 model = joblib.load('backend/model/camera_price_prediction_model.pkl')
@@ -17,9 +17,28 @@ feature_importance = pd.read_csv('feature_importance.csv')
 # Get current year for age calculation
 current_year = datetime.now().year
 
+# Load feature importance for API
+try:
+    feature_importance_data = pd.read_csv('backend/model/feature_importance.csv')
+except:
+    feature_importance_data = pd.DataFrame()
+
+@app.route('/api/feature-importance')
+def feature_importance_api_route():
+    try:
+        if feature_importance_data.empty:
+            return jsonify({'success': False, 'error': 'Feature importance data not loaded'})
+        top_features = feature_importance_data.head(10).to_dict('records')
+        return jsonify({
+            'success': True,
+            'features': top_features
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return send_from_directory(app.static_folder, 'index.html')
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -99,7 +118,7 @@ def predict():
 
 @app.route('/about')
 def about():
-    return render_template('about.html', feature_importance=feature_importance)
+    return send_from_directory(app.static_folder, 'about.html')
 
 if __name__ == '__main__':
     app.run(debug=True)

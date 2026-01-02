@@ -1,80 +1,31 @@
 # api/index.py
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import joblib
 import numpy as np
 import pandas as pd
 from datetime import datetime
 import os
-import requests
-import tempfile
-import zipfile
-import io
+import sys
 
-app = Flask(__name__, static_folder='../public', static_url_path='')
+# Add the parent directory to the path to import the model
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Fungsi untuk mengunduh dan mengekstrak model dari GitHub
-def download_and_extract_models():
-    try:
-        # URL raw dari file ZIP yang berisi model
-        # Ganti dengan URL repository Anda
-        repo_owner = "KazeYuuji"
-        repo_name = "ML4"
-        branch = "main"
-        models_zip_url = f"https://github.com/{repo_owner}/{repo_name}/archive/{branch}.zip"
-        
-        # Download ZIP
-        response = requests.get(models_zip_url)
-        response.raise_for_status()
-        
-        # Ekstrak ZIP
-        with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
-            # Ekstrak hanya folder models
-            for file in zip_ref.namelist():
-                if file.startswith(f"{repo_name}-{branch}/models/"):
-                    # Ekstrak ke direktori sementara
-                    zip_ref.extract(file, '/tmp/')
-                    # Pindahkan ke lokasi yang diinginkan
-                    src = f"/tmp/{file}"
-                    dst = file.replace(f"{repo_name}-{branch}/", "")
-                    os.makedirs(os.path.dirname(dst), exist_ok=True)
-                    os.rename(src, dst)
-        
-        return True
-    except Exception as e:
-        print(f"Error downloading models: {e}")
-        return False
+app = Flask(__name__, template_folder='../public', static_folder='../public')
 
-# Download models saat startup
-models_downloaded = download_and_extract_models()
-
-# Load model dan objek preprocessing
+# Load the model and preprocessing objects
 try:
-    if models_downloaded:
-        model = joblib.load('models/camera_price_prediction_model.pkl')
-        scaler = joblib.load('models/camera_price_scaler.pkl')
-        le = joblib.load('models/camera_brand_encoder.pkl')
-        selected_features = joblib.load('models/selected_features.pkl')
-        feature_importance = pd.read_csv('models/feature_importance.csv')
-        model_loaded = True
-        print("Models loaded successfully!")
-    else:
-        model_loaded = False
+    model = joblib.load('backend/model/camera_price_prediction_model.pkl')
+    scaler = joblib.load('backend/model/camera_price_scaler.pkl')
+    le = joblib.load('backend/model/camera_brand_encoder.pkl')
+    selected_features = joblib.load('backend/model/selected_features.pkl')
+    feature_importance = pd.read_csv('backend/model/feature_importance.csv')
+    model_loaded = True
 except Exception as e:
     print(f"Error loading model: {e}")
     model_loaded = False
 
-# Tahun saat ini untuk fitur usia kamera
+# Get current year for age calculation
 current_year = datetime.now().year
-
-# --- ROUTES ---
-
-@app.route('/')
-def home():
-    return send_from_directory('../public', 'index.html')
-
-@app.route('/about')
-def about():
-    return send_from_directory('../public', 'about.html')
 
 @app.route('/api/feature-importance')
 def feature_importance_api():
@@ -82,6 +33,7 @@ def feature_importance_api():
         return jsonify({'success': False, 'error': 'Model not loaded'})
     
     try:
+        # Return top 10 features
         top_features = feature_importance.head(10).to_dict('records')
         return jsonify({
             'success': True,
@@ -90,13 +42,21 @@ def feature_importance_api():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/')
+def home():
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/about')
+def about():
+    return send_from_directory(app.static_folder, 'about.html')
+
 @app.route('/predict', methods=['POST'])
 def predict():
     if not model_loaded:
         return jsonify({'success': False, 'error': 'Model not loaded'})
     
     try:
-        # Ambil data dari form
+        # Get form data
         camera_specs = {
             'Model': request.form['model'],
             'Release date': int(request.form['release_date']),
@@ -112,7 +72,7 @@ def predict():
             'Dimensions': float(request.form['dimensions'])
         }
         
-        # Terapkan feature engineering yang sama seperti di notebook
+        # Apply the same feature engineering as in the notebook
         new_df = pd.DataFrame([camera_specs])
         new_df['Brand'] = new_df['Model'].apply(lambda x: x.split()[0])
         new_df['Model_Name'] = new_df['Model'].apply(lambda x: ' '.join(x.split()[1:]))
@@ -123,7 +83,7 @@ def predict():
         new_df['Resolution_Ratio'] = new_df['Resolution_Ratio'].replace([np.inf, -np.inf], np.nan).fillna(1)
         new_df['Megapixels'] = new_df['Effective pixels'] / 1000000
         new_df['Weight_per_MP'] = new_df['Weight (inc. batteries)'] / new_df['Megapixels']
-        new_df['Weight_per_MP'] = new_df['Weight_per_MP'].replace([np.inf, -np.inf], np.nan).fillna(185)
+        new_df['Weight_per_MP'] = new_df['Weight_per_MP'].replace([np.inf, -np.inf], np.nan).fillna(185)  # Default median weight
         new_df['Size_Efficiency'] = new_df['Max resolution'] / new_df['Dimensions']
         new_df['Size_Efficiency'] = new_df['Size_Efficiency'].replace([np.inf, -np.inf], np.nan).fillna(0)
         
@@ -131,27 +91,28 @@ def predict():
         try:
             new_df['Brand_Encoded'] = le.transform(new_df['Brand'])
         except ValueError:
-            new_df['Brand_Encoded'] = 0
+            # Handle unknown brands
+            new_df['Brand_Encoded'] = 0  # Default encoding for unknown brands
         
-        # Buat brand dummies
+        # Create brand dummies
         brand_dummies_new = pd.get_dummies(new_df['Brand'], prefix='Brand', drop_first=True)
         new_df = pd.concat([new_df, brand_dummies_new], axis=1)
         
-        # Pastikan semua kolom yang diperlukan ada
+        # Ensure all required columns are present
         for col in selected_features:
             if col not in new_df.columns:
                 new_df[col] = 0
         
-        # Pilih hanya fitur yang digunakan dalam model
+        # Select only the features used in the model
         new_df_selected = new_df[selected_features]
         
-        # Skalakan fitur
+        # Scale the features
         new_df_scaled = scaler.transform(new_df_selected)
         
-        # Buat prediksi
+        # Make prediction
         prediction = model.predict(new_df_scaled)[0]
         
-        # Dapatkan interval prediksi
+        # Get prediction interval (using standard deviation of predictions from all trees)
         tree_predictions = np.array([tree.predict(new_df_scaled)[0] for tree in model.estimators_])
         std_dev = np.std(tree_predictions)
         confidence_interval = (prediction - 1.96*std_dev, prediction + 1.96*std_dev)
@@ -167,3 +128,9 @@ def predict():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+# For Vercel serverless functions
+app.handler = app
+
+if __name__ == '__main__':
+    app.run(debug=True)
