@@ -7,12 +7,52 @@ from datetime import datetime
 import os
 import sys
 
+<<<<<<< HEAD
 # Add the parent directory to the path to import the model
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 app = Flask(__name__, template_folder='../public', static_folder='../public')
 
 # Load the model and preprocessing objects
+=======
+app = Flask(__name__)
+
+# Fungsi untuk mengunduh model dari GitHub
+def download_models():
+    try:
+        # URL raw dari file model
+        repo_owner = "KazeYuuji"
+        repo_name = "ML4"
+        branch = "main"
+        
+        models = {
+            'camera_price_prediction_model.pkl': f"https://raw.githubusercontent.com/{repo_owner}/{repo_name}/{branch}/models/camera_price_prediction_model.pkl",
+            'camera_price_scaler.pkl': f"https://raw.githubusercontent.com/{repo_owner}/{repo_name}/{branch}/models/camera_price_scaler.pkl",
+            'camera_brand_encoder.pkl': f"https://raw.githubusercontent.com/{repo_owner}/{repo_name}/{branch}/models/camera_brand_encoder.pkl",
+            'selected_features.pkl': f"https://raw.githubusercontent.com/{repo_owner}/{repo_name}/{branch}/models/selected_features.pkl",
+            'feature_importance.csv': f"https://raw.githubusercontent.com/{repo_owner}/{repo_name}/{branch}/models/feature_importance.csv"
+        }
+        
+        # Buat direktori models
+        os.makedirs('models', exist_ok=True)
+        
+        # Download setiap model
+        for filename, url in models.items():
+            response = requests.get(url)
+            response.raise_for_status()
+            with open(f'models/{filename}', 'wb') as f:
+                f.write(response.content)
+        
+        return True
+    except Exception as e:
+        print(f"Error downloading models: {e}")
+        return False
+
+# Download models saat startup
+models_downloaded = download_models()
+
+# Load model dan objek preprocessing
+>>>>>>> 4611874a902c5dc9621a189c02e68fd46bab5077
 try:
     model = joblib.load('backend/model/camera_price_prediction_model.pkl')
     scaler = joblib.load('backend/model/camera_price_scaler.pkl')
@@ -27,6 +67,19 @@ except Exception as e:
 # Get current year for age calculation
 current_year = datetime.now().year
 
+<<<<<<< HEAD
+=======
+# --- ROUTES ---
+
+@app.route('/')
+def home():
+    return send_from_directory('public', 'index.html')
+
+@app.route('/about')
+def about():
+    return send_from_directory('public', 'about.html')
+
+>>>>>>> 4611874a902c5dc9621a189c02e68fd46bab5077
 @app.route('/api/feature-importance')
 def feature_importance_api():
     if not model_loaded:
@@ -72,7 +125,11 @@ def predict():
             'Dimensions': float(request.form['dimensions'])
         }
         
+<<<<<<< HEAD
         # Apply the same feature engineering as in the notebook
+=======
+        # Terapkan feature engineering
+>>>>>>> 4611874a902c5dc9621a189c02e68fd46bab5077
         new_df = pd.DataFrame([camera_specs])
         new_df['Brand'] = new_df['Model'].apply(lambda x: x.split()[0])
         new_df['Model_Name'] = new_df['Model'].apply(lambda x: ' '.join(x.split()[1:]))
